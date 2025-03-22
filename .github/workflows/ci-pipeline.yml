@@ -6,22 +6,24 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout code
       - uses: actions/checkout@v4
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.x'
+          python-version: '3.10' # Switch from 3.x to 3.10 for stability
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Test with pytest
+      - name: Run Pytest
         run: |
           pip install pytest pytest-cov
           pytest api_tests.py --doctest-modules --junitxml=junit/test-results.xml --cov=com --cov-report=xml --cov-report=html
       - name: Archive code coverage results
         uses: actions/upload-artifact@v4
-        id: artifact-upload-step
+        if: always()
         with:
           name: test-results
           path: junit/test-results.xml
