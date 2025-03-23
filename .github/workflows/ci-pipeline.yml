@@ -6,21 +6,23 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      
       - uses: actions/checkout@v4
-
+      
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.10' # Switch from 3.x to 3.10 for stability
+          python-version: '3.10'
+      
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+      
       - name: Run Pytest
         run: |
           pip install pytest pytest-cov
           pytest api_tests.py --doctest-modules --junitxml=junit/test-results.xml --cov=com --cov-report=xml --cov-report=html
+      
       - name: Archive code coverage results
         uses: actions/upload-artifact@v4
         if: always()
@@ -28,7 +30,7 @@ jobs:
           name: test-results
           path: junit/test-results.xml
 
-         build:
+  build:
     needs: test
     permissions:
       id-token: write    
@@ -53,4 +55,5 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/devops-labs:latest  
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/devops-labs:latest
+
