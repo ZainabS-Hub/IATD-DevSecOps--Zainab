@@ -20,7 +20,7 @@ jobs:
           location: australiaeast
           targetPort: 5000
 
-    submit_results:
+  submit_results:
             needs: [deploy]
             if: true
             runs-on: ubuntu-latest
@@ -47,7 +47,7 @@ jobs:
                   echo "FQDN: $FQDN"
                   WEEK1_APP=$(curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" -d "https://$FQDN" https://devsecops-ver.azurewebsites.net/api/week1-app)
                   echo "Week1 app upload: $WEEK1_APP"
-                  # ✅ Week 2 verification
+                  #Week 2 verification
                   WEEK2_SUBMIT=$(curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" -d "https://$FQDN" https://devsecops-ver.azurewebsites.net/api/week2-submit)
                   echo "Week2 submit: $WEEK2_SUBMIT"
         
