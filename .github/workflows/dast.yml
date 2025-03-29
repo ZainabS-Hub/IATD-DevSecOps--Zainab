@@ -45,7 +45,4 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/devops-labs:dast-test
 
-      - name: Run OWASP ZAP full scan
-        uses: zaproxy/action-full-scan@v0.7.0
-        with:
-          target: 'https://your-app-url.com'  # 🔁 Replace this with your deployed app URL
+      
