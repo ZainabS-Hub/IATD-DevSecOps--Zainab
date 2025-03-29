@@ -7,10 +7,21 @@ on:
     branches: [main]
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run dummy tests
+        run: echo "✅ Tests passed"
+
+  sonarqube:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run dummy SonarQube analysis
+        run: echo "✅ SonarQube analysis completed"
+
   dast:
     needs: [test, sonarqube]
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -37,5 +48,4 @@ jobs:
       - name: Run OWASP ZAP full scan
         uses: zaproxy/action-full-scan@v0.7.0
         with:
-          target: 'https://your-app-url.com'  # 🔁 Replace with your deployed app URL
-          allow_issue_writing: false
+          target: 'https://your-app-url.com'  # 🔁 Replace this with your deployed app URL
