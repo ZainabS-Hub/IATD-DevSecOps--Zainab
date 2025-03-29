@@ -30,11 +30,11 @@ jobs:
           name: test-results
           path: junit/test-results.xml
   sonarqube:
-    needs: test
-    if: true
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
+   needs: test
+  if: true
+  runs-on: ubuntu-latest
+  steps:
+    - uses: actions/checkout@v3
       with:
         fetch-depth: 0  # full history for better reporting
 
