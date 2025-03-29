@@ -45,4 +45,17 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/devops-labs:dast-test
 
-      
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS1 }}
+
+      - name: Deploy DAST Container App
+        uses: azure/container-apps-deploy-action@v1
+        with:
+          imageToDeploy: ${{ secrets.DOCKERHUB_USERNAME }}/devops-labs:dast-test
+          containerAppName: devops-test-app
+          containerAppEnvironment: devops-app-env
+          resourceGroup: devsecops-lab
+          location: australiaeast
+          targetPort: 5000
