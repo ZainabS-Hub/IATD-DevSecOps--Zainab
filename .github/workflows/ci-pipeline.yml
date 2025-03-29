@@ -33,7 +33,7 @@ jobs:
    needs: test
   if: true
   runs-on: ubuntu-latest
-  steps:
+  steps: 
     - uses: actions/checkout@v3
       with:
         fetch-depth: 0  # full history for better reporting
@@ -51,10 +51,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Build your app
+      - name: Build Application
         run: |
-          echo "Your build command here"
-        
+          echo "Build step placeholder"
+        # Add your actual build commands here
   build:
     needs: test
     permissions:
