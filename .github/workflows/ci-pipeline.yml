@@ -4,32 +4,35 @@ on: [push]
 
 jobs:
   test:
+    name: Run tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
-      
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      
+
       - name: Run Pytest
         run: |
           pip install pytest pytest-cov
           pytest api_tests.py --doctest-modules --junitxml=junit/test-results.xml --cov=com --cov-report=xml --cov-report=html
-      
+
       - name: Archive code coverage results
-          if: always()
-          uses: actions/upload-artifact@v4
-          with:
-            name: test-results
-            path: junit/test-results.xml 
- sonarqube:
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: junit/test-results.xml
+
+  sonarqube:
+    name: SonarQube analysis
     needs: test
     if: true
     runs-on: ubuntu-latest
@@ -37,7 +40,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
-          fetch-depth: 0  # full history for better reporting
+          fetch-depth: 0
 
       - name: SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@master
@@ -45,26 +48,16 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_URL }}
 
-  build:
+  docker_build:
+    name: Build and push Docker image
     needs: sonarqube
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Build Application
-        run: |
-          echo "Build step placeholder"
-        # Add your actual build commands here
-  build:
-    needs: test
     permissions:
-      id-token: write    
+      id-token: write
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -84,7 +77,8 @@ jobs:
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/devops-labs:latest
 
   submit_results:
-    needs: [build]
+    name: Submit results to Azure
+    needs: [docker_build]
     if: true
     runs-on: ubuntu-latest
     steps:
@@ -112,3 +106,5 @@ jobs:
           echo "FQDN: $FQDN"
           WEEK1_APP=$(curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" -d "https://$FQDN" https://devsecops-ver.azurewebsites.net/api/week1-app)
           echo "Week1 app upload: $WEEK1_APP"
+          WEEK2_SUBMIT=$(curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" -d "https://$FQDN" https://devsecops-ver.azurewebsites.net/api/week2-submit)
+          echo "Week2 submit: $WEEK2_SUBMIT"
