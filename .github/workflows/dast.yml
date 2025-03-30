@@ -59,14 +59,15 @@ jobs:
           resourceGroup: devsecops-lab
           location: australiaeast
           targetPort: 5000
-     # Get the deployed app URL
+
       - name: Get deployed DAST app URL
         run: |
-       export FQDN=$(az containerapp show -n devops-test-app -g devsecops-lab --query properties.configuration.ingress.fqdn -o tsv)
-       echo "TEST_APP_URL=https://$FQDN" >> $GITHUB_ENV
-       echo "TEST_APP_URL=https://$FQDN"
-       curl https://$FQDN/ui
-       sed -i "s,https://devops-test-app.politefield-92a6b502.australiaeast.azurecontainerapps.io,https://$FQDN,g" $GITHUB_WORKSPACE/openapi_specs/openapi3.yml
+          export FQDN=$(az containerapp show -n devops-test-app -g devsecops-lab --query properties.configuration.ingress.fqdn -o tsv)
+          echo "TEST_APP_URL=https://$FQDN" >> $GITHUB_ENV
+          echo "TEST_APP_URL=https://$FQDN"
+          curl https://$FQDN/ui
+          sed -i "s,https://devops-test-app.politefield-92a6b502.australiaeast.azurecontainerapps.io,https://$FQDN,g" $GITHUB_WORKSPACE/openapi_specs/openapi3.yml
+
       - name: Run OWASP ZAP Baseline Scan
         uses: zaproxy/action-baseline@v0.10.0
         with:
@@ -76,4 +77,4 @@ jobs:
           fail_action: false
           format: 'html'
           artifact_name: 'zap-dast-report'
-          cmd_options: '-I -j -o -n -t openapi_specs/openapi3.yml' 
+          cmd_options: '-I -j -o -n -t openapi_specs/openapi3.yml'
