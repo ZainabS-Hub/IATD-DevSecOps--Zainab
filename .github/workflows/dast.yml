@@ -66,4 +66,14 @@ jobs:
        echo "TEST_APP_URL=https://$FQDN" >> $GITHUB_ENV
        echo "TEST_APP_URL=https://$FQDN"
        curl https://$FQDN/ui
-       sed -i "s,http://localhost:5000,https://$FQDN,g" $GITHUB_WORKSPACE/openapi_specs/openapi3.yml
+       sed -i "s,https://devops-test-app.politefield-92a6b502.australiaeast.azurecontainerapps.io,https://$FQDN,g" $GITHUB_WORKSPACE/openapi_specs/openapi3.yml
+      - name: Run OWASP ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.10.0
+        with:
+          target: 'https://devops-test-app.politefield-92a6b502.australiaeast.azurecontainerapps.io'
+          rules_file_name: ''
+          allow_issue_warnings: true
+          fail_action: false
+          format: 'html'
+          artifact_name: 'zap-dast-report'
+          cmd_options: '-I -j -o -n -t openapi_specs/openapi3.yml' 
