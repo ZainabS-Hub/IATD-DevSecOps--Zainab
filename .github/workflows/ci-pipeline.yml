@@ -34,7 +34,7 @@ jobs:
   sonarqube:
     name: SonarQube analysis
     needs: test
-    if: false  # Disable SonarQube for faster pipeline during testing
+    if: false  # SAST temporarily disabled
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -102,4 +102,10 @@ jobs:
           location: australiaeast
           targetPort: 5000
 
- 
+      - name: Get deployed DAST app url
+        run: |
+          export FQDN=$(az containerapp show -n devops-test-app -g devsecops-lab --query properties.configuration.ingress.fqdn -o tsv)
+          echo "TEST_APP_URL=https://$FQDN" >> $GITHUB_ENV
+          echo "TEST_APP_URL=https://$FQDN"
+          curl https://$FQDN/ui
+          sed -i "s,http://localhost:5000,https://$FQDN,g" $GITHUB_WORKSPACE/openapi_specs/openapi3.yml
