@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite name="pytest" errors="0" failures="1" skipped="0" tests="1" time="1.014" timestamp="2025-04-02T23:15:19.739014+00:00" hostname="fv-az1337-308"><testcase classname="api_tests" name="test_root_path" time="0.006"><failure message="assert 401 == 200&#10; +  where 401 = &lt;WrapperTestResponse streamed [401 UNAUTHORIZED]&gt;.status_code">def test_root_path():
+        with vuln_app.app.test_client() as client:
+            response = client.get("/")
+&gt;           assert response.status_code == 200
+E           assert 401 == 200
+E            +  where 401 = &lt;WrapperTestResponse streamed [401 UNAUTHORIZED]&gt;.status_code
+
+api_tests.py:18: AssertionError</failure></testcase></testsuite></testsuites>
