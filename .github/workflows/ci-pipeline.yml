@@ -109,3 +109,10 @@ jobs:
           echo "TEST_APP_URL=https://$FQDN"
           curl https://$FQDN/ui
           sed -i "s,http://localhost:5000,https://$FQDN,g" $GITHUB_WORKSPACE/openapi_specs/openapi3.yml
+       - name: Commit and push updated OpenAPI spec
+         run: |
+            git config --global user.name "github-actions"
+            git config --global user.email "github-actions@github.com"
+            git add openapi_specs/openapi3.yml
+            git commit -m "Update OpenAPI spec with deployed URL [skip ci]" || echo "No changes to commit"
+            git push origin HEAD:${{ github.ref_name }}
