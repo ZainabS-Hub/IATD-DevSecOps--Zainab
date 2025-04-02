@@ -31,16 +31,6 @@ jobs:
           name: test-results
           path: junit/test-results.xml
 
-      - name: Commit and push test results
-        if: always()
-        run: |
-          git config --global user.name "github-actions"
-          git config --global user.email "github-actions@github.com"
-          git pull origin ${{ github.ref_name }}
-          git add .
-          git commit -m "Add test results and coverage reports [skip ci]" || echo "No changes to commit"
-          git push origin HEAD:${{ github.ref_name }}
-
   sonarqube:
     name: SonarQube analysis
     needs: test
@@ -112,12 +102,4 @@ jobs:
           location: australiaeast
           targetPort: 5000
 
-      - name: Commit and push DAST deployment details
-        if: always()
-        run: |
-          git config --global user.name "github-actions"
-          git config --global user.email "github-actions@github.com"
-          git pull origin ${{ github.ref_name }}
-          git add .
-          git commit -m "Update DAST deployment state [skip ci]" || echo "No changes to commit"
-          git push origin HEAD:${{ github.ref_name }}
+ 
