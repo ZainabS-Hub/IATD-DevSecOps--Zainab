@@ -148,8 +148,8 @@ jobs:
             cmd_options: >
               -a
               -J report_json.json
-              -w report.md
-              -r report.html
+              -w report_md
+              -r report_html
               -t openapi_specs/openapi3.yml
             fail_action: false
 
@@ -159,5 +159,5 @@ jobs:
           name: zap-report
           path: |
             report_json.json
-            report.md
-            report.html
+            report_md.json
+            report_html.json
