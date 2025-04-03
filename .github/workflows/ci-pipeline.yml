@@ -1,6 +1,12 @@
 name: Python test and build
 
-on: [push]
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
 
 jobs:
   test:
@@ -22,9 +28,9 @@ jobs:
       - name: Run Pytest
         run: |
           pip install pytest pytest-cov
-          pytest api_tests.py  --junitxml=junit/test-results.xml 
+          pytest api_tests.py --junitxml=junit/test-results.xml
 
-      - name: Archive code coverage results
+      - name: Archive test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -34,7 +40,6 @@ jobs:
   sonarqube:
     name: SonarQube analysis
     needs: test
-    if: true
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -88,26 +93,26 @@ jobs:
         run: |
           echo "Waiting for container app 'devops-test-app' to be ready..."
           for i in {1..10}; do
-          status=$(az containerapp show -n devops-test-app -g devsecops-lab --query "properties.provisioningState" -o tsv)
-          echo "Current provisioning status: $status"
-          if [[ "$status" == "Succeeded" ]]; then
-             echo "App is ready!"
-             break
-          fi
-          echo "Waiting... ($i/10)"
-          sleep 15
+            status=$(az containerapp show -n devops-test-app -g devsecops-lab --query "properties.provisioningState" -o tsv)
+            echo "Current provisioning status: $status"
+            if [[ "$status" == "Succeeded" ]]; then
+              echo "App is ready!"
+              break
+            fi
+            echo "Waiting... ($i/10)"
+            sleep 15
           done
-  
+
       - name: Deploy DAST Container App
         uses: azure/container-apps-deploy-action@v1
         with:
-            imageToDeploy: ${{ secrets.DOCKERHUB_USERNAME }}/devops-labs:dast-test
-            containerAppName: devops-test-app
-            containerAppEnvironment: devops-app-env
-            resourceGroup: devsecops-lab
-            location: australiaeast
-            targetPort: 5000
-  
+          imageToDeploy: ${{ secrets.DOCKERHUB_USERNAME }}/devops-labs:dast-test
+          containerAppName: devops-test-app
+          containerAppEnvironment: devops-app-env
+          resourceGroup: devsecops-lab
+          location: australiaeast
+          targetPort: 5000
+
       - name: Get deployed DAST app URL
         run: |
           FQDN=$(az containerapp show -n devops-test-app -g devsecops-lab --query properties.configuration.ingress.fqdn -o tsv)
@@ -138,14 +143,12 @@ jobs:
             -w report.md
             -r report.html
           fail_action: false
-          allow_issue_writing: false
-    
 
       - name: Upload ZAP Report
         uses: actions/upload-artifact@v4
         with:
           name: zap-report
           path: |
-              report_json.json
-              report.md
-              report.html        
+            report_json.json
+            report.md
+            report.html
