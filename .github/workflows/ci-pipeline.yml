@@ -119,7 +119,7 @@ jobs:
           echo "TEST_APP_URL=https://$FQDN" >> $GITHUB_ENV
           echo "TEST_APP_URL=https://$FQDN"
           curl https://$FQDN/ui
-          sed -i "s,https://devops-test-app.politefield-92a6b502.australiaeast.azurecontainerapps.io,https://$FQDN,g" $GITHUB_WORKSPACE/openapi_specs/openapi3.yml
+          sed -i "s,http://localhost:5000,https://$FQDN,g" $GITHUB_WORKSPACE/openapi_specs/openapi3.yml
       - name: Commit and push updated OpenAPI spec
         run: |
           git config --global user.name "github-actions"
