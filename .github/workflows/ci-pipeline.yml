@@ -34,7 +34,7 @@ jobs:
   sonarqube:
     name: SonarQube analysis
     needs: test
-    if: false  # Disable for now
+    if: true
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
