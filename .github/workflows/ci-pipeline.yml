@@ -120,7 +120,6 @@ jobs:
           echo "TEST_APP_URL=https://$FQDN"
           curl https://$FQDN/ui
           sed -i "s,https://devops-test-app.politefield-92a6b502.australiaeast.azurecontainerapps.io,https://$FQDN,g" $GITHUB_WORKSPACE/openapi_specs/openapi3.yml
-
       - name: Commit and push updated OpenAPI spec
         run: |
           git config --global user.name "github-actions"
@@ -130,19 +129,26 @@ jobs:
           git commit -m "Update OpenAPI spec with deployed URL [skip ci]" || echo "No changes to commit"
           git push origin HEAD:${{ github.ref_name }}
 
-      - name: Run OWASP ZAP Baseline Scan
+      - name: Wait for app to be reachable
+        run: |
+         echo "Waiting for app to respond at $TEST_APP_URL..."
+         for i in {1..10}; do
+              curl --silent --head --fail https://${{ env.TEST_APP_URL }}/ui && break
+              echo "Retry $i: app not yet reachable."
+              sleep 10
+            done
+        
+      - name: Run OWASP ZAP Baseline Scan (no plan file)
         uses: zaproxy/action-baseline@v0.10.0
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          docker_name: 'ghcr.io/zaproxy/zaproxy:stable'
-          target: "https://${{ env.TEST_APP_URL }}"
-          rules_file_name: .zap/rules.tsv
-          cmd_options: >
-            -a
-            -J report_json.json
-            -w report.md
-            -r report.html
-          fail_action: false
+            token: ${{ secrets.GITHUB_TOKEN }}
+            target: "https://${{ env.TEST_APP_URL }}"
+            cmd_options: >
+              -a
+              -J report_json.json
+              -w report.md
+              -r report.html
+            fail_action: false
 
       - name: Upload ZAP Report
         uses: actions/upload-artifact@v4
