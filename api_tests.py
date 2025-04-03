@@ -14,8 +14,5 @@ alive = int(os.getenv('tokentimetolive', 60))
 
 def test_root_path():
     with vuln_app.app.test_client() as client:
-         headers = {
-            "Authorization": "Bearer testtoken123"  # Replace with a valid or mock token
-        }
         response = client.get("/")
         assert response.status_code == 200
