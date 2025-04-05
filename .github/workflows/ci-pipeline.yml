@@ -150,10 +150,10 @@ jobs:
           fail_action: false
           allow_issue_writing: false
           artifact_name: 'zap-report' # Optional By default the action will attach the report to the build with the name zap_scan. Set this to a different string to name it something else. Consult GitHub's documentation for which artifact names are allowed.
-      - name: Upload ZAP report
-        id: artifact-zap
-        uses: actions/upload-artifact@v4
-        with:
-          name: zap-report
-          path: report_json.json
+     # - name: Upload ZAP report
+     #   id: artifact-zap
+     #   uses: actions/upload-artifact@v4
+     #  with:
+     #    name: zap-report
+     #    path: report_json.json
           
