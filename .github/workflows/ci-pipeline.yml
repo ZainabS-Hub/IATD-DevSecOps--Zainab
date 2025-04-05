@@ -159,9 +159,47 @@ jobs:
           allow_issue_writing: false
           artifact_name: 'zap-report'
 
+  image-scan:
+    name: Scan Docker Image for Vulnerabilities
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scan image
+        uses: anchore/scan-action@v3
+        id: image-scan
+        with:
+          image: ${{ secrets.DOCKERHUB_USERNAME }}/devops-labs:latest
+          fail-build: false
+          output-format: json
+
+      - name: Enforce Security Gateway - Fail on High/Critical CVEs
+        run: |
+          jq '.matches[] | select(.vulnerability.severity == "High" or .vulnerability.severity == "Critical")' ${{ steps.image-scan.outputs.json }} > results.json
+          COUNT=$(cat results.json | wc -l)
+          if [ "$COUNT" -gt 0 ]; then
+            echo "❌ Found $COUNT High/Critical vulnerabilities:"
+            cat results.json
+            exit 1
+          else
+            echo "✅ No High or Critical vulnerabilities found."
+          fi
+
+      - name: Upload Filtered Vulnerabilities
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: high-critical-vulns
+          path: results.json
+
+      - name: Upload Image report
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-report
+          path: ${{ steps.image-scan.outputs.json }}
+
   submit_results:
     name: Submit Reports to Verification Portal
-    needs: [dast]
+    needs: [test, sonarqube, dast, image-scan]
     runs-on: ubuntu-latest
     steps:
       - uses: azure/login@v1
@@ -187,6 +225,11 @@ jobs:
           name: zap-report
           path: ${{ github.workspace }}
 
+      - uses: actions/download-artifact@v4
+        with:
+          name: image-report
+          path: ${{ github.workspace }}
+
       - name: Upload reports
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -200,22 +243,6 @@ jobs:
 
           ZAP_RESPONSE=$(curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN"  --data-binary @$GITHUB_WORKSPACE/report_json.json https://devsecops-ver.azurewebsites.net/api/week3-zap-report)
           echo "Zap upload: $ZAP_RESPONSE"
-  image-scan:
-    name: Scan Docker Image for Vulnerabilities
-    needs: [test]
-    runs-on: ubuntu-latest
-    steps:
-     - name: Scan image
-       uses: anchore/scan-action@v3
-       id: image-scan
-       with:
-        image: ${{ secrets.DOCKERHUB_USERNAME }}/devops-labs:latest
-        fail-build: false
-        output-format: json
-     - name: Upload Filtered Vulnerabilities
-      if: failure()
-      uses: actions/upload-artifact@v4
-      with:
-        name: high-critical-vulns
-        path: filtered.json
 
+          IMAGE_RESPONSE=$(curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" --data-binary @$GITHUB_WORKSPACE/results.json https://devsecops-ver.azurewebsites.net/api/week4-image-report)
+          echo "Image report upload: $IMAGE_RESPONSE"
