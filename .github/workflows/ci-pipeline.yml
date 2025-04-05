@@ -210,29 +210,29 @@ jobs:
           curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" --data-binary @artifacts/sonarqube-report/sonarqube-report.json https://devsecops-ver.azurewebsites.net/api/week3-sonar-report
           curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" --data-binary @artifacts/zap-report/report_json.json https://devsecops-ver.azurewebsites.net/api/week3-zap-report
           curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" --data-binary @artifacts/image-report/results.json https://devsecops-ver.azurewebsites.net/api/week4-image-report
- security_gate:
+  security_gate:
     name: Security Gate Check   # <-- This line is missing in your original file
     needs: [sonarqube, dast, image-scan]
     if: true
     runs-on: ubuntu-latest
     steps:
-    - name: Download sonarqube-report
-      uses: actions/download-artifact@v4
-      with:
+     - name: Download sonarqube-report
+       uses: actions/download-artifact@v4
+       with:
         name: sonarqube-report
         path: ${{github.workspace}}
-    - name: Download zap-report
-      uses: actions/download-artifact@v4
-      with:
+     - name: Download zap-report
+       uses: actions/download-artifact@v4
+       with:
         name: zap-report
         path: ${{github.workspace}}
-    - name: Download image-report
-      uses: actions/download-artifact@v4
-      with:
+     - name: Download image-report
+       uses: actions/download-artifact@v4
+       with:
         name: image-report
         path: ${{github.workspace}}
-    - name: Read reports
-      run: |
+     - name: Read reports
+       run: |
         IMAGE_RESULT_HIGH=$(cat results.json | jq '.matches[] | select(.vulnerability.severity=="High") | .vulnerability.id' | wc -l)
         if [ $IMAGE_RESULT_HIGH -gt 0 ]; then
           echo "Image scan has high severity vulnerabilities"
