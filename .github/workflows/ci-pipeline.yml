@@ -211,6 +211,7 @@ jobs:
           curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" --data-binary @artifacts/zap-report/report_json.json https://devsecops-ver.azurewebsites.net/api/week3-zap-report
           curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" --data-binary @artifacts/image-report/results.json https://devsecops-ver.azurewebsites.net/api/week4-image-report
  security_gate:
+    name: Security Gate Check   # <-- This line is missing in your original file
     needs: [sonarqube, dast, image-scan]
     if: true
     runs-on: ubuntu-latest
