@@ -200,6 +200,7 @@ jobs:
   submit_results:
     name: Submit Reports to Verification Portal
     needs: [test, sonarqube, dast, image-scan]
+    if: true
     runs-on: ubuntu-latest
     steps:
       - uses: azure/login@v1
