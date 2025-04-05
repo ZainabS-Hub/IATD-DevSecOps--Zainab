@@ -197,7 +197,7 @@ jobs:
           name: image-report
           path: ${{ steps.image-scan.outputs.json }}
 
-  submit_results:
+  submit_reports:
     name: Submit Reports to Verification Portal
     needs: [test, sonarqube, dast, image-scan]
     if: true
