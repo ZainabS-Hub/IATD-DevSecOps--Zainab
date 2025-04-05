@@ -120,6 +120,7 @@ jobs:
           echo "TEST_APP_URL=https://$FQDN"
           curl https://$FQDN/ui
           sed -i "s,http://localhost:5000,https://$FQDN,g" $GITHUB_WORKSPACE/openapi_specs/openapi3.yml
+
       - name: Commit and push updated OpenAPI spec
         run: |
           git config --global user.name "github-actions"
@@ -131,13 +132,13 @@ jobs:
 
       - name: Wait for app to be reachable
         run: |
-         echo "Waiting for app to respond at $TEST_APP_URL..."
-         for i in {1..10}; do
-              curl --silent --head --fail https://${{ env.TEST_APP_URL }}/ui && break
-              echo "Retry $i: app not yet reachable."
-              sleep 10
-            done
-  
+          echo "Waiting for app to respond at $TEST_APP_URL..."
+          for i in {1..10}; do
+            curl --silent --head --fail https://${{ env.TEST_APP_URL }}/ui && break
+            echo "Retry $i: app not yet reachable."
+            sleep 10
+          done
+
       - name: ZAP Scan
         uses: zaproxy/action-api-scan@v0.9.0
         with:
@@ -149,17 +150,11 @@ jobs:
           cmd_options: '-a -c /zap/wrk/.zap/rules.tsv'
           fail_action: false
           allow_issue_writing: false
-          artifact_name: 'zap-report' # Optional By default the action will attach the report to the build with the name zap_scan. Set this to a different string to name it something else. Consult GitHub's documentation for which artifact names are allowed.
-     # - name: Upload ZAP report
-     #   id: artifact-zap
-     #   uses: actions/upload-artifact@v4
-     #  with:
-     #    name: zap-report
-     #    path: report_json.json
-          
- submit_results:
-    needs: [build]
-    if: true
+          artifact_name: 'zap-report'
+
+  submit_results:
+    name: Submit Reports to Verification Portal
+    needs: [dast]
     runs-on: ubuntu-latest
     steps:
       - uses: azure/login@v1
