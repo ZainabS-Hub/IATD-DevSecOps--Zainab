@@ -127,13 +127,14 @@ jobs:
       - name: Retry deploy if failed
         if: failure()
         run: |
-         echo "Retrying deploy after short wait..."
-         sleep 20
-         az containerapp update \
-         --name devops-test-app \
-         --resource-group devsecops-lab \
-         --image ${{ env.DOCKERHUB_USERNAME }}/devops-labs:dast-test \
-         --target-port 5000
+          echo "Retrying deploy after short wait..."
+          sleep 20
+          az containerapp update \
+            --name devops-test-app \
+            --resource-group devsecops-lab \
+            --image ${{ env.DOCKERHUB_USERNAME }}/devops-labs:dast-test \
+            --target-port 5000
+
       - name: Get deployed DAST app URL
         run: |
           FQDN=$(az containerapp show -n devops-test-app -g devsecops-lab --query properties.configuration.ingress.fqdn -o tsv)
@@ -221,51 +222,55 @@ jobs:
           curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" --data-binary @artifacts/sonarqube-report/sonarqube-report.json https://devsecops-ver.azurewebsites.net/api/week3-sonar-report
           curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" --data-binary @artifacts/zap-report/report_json.json https://devsecops-ver.azurewebsites.net/api/week3-zap-report
           curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" --data-binary @artifacts/image-report/results.json https://devsecops-ver.azurewebsites.net/api/week4-image-report
+
   security_gate:
-    name: Security Gate Check   # <-- This line is missing in your original file
+    name: Security Gate Check
     needs: [sonarqube, dast, image-scan]
-    if: true
     runs-on: ubuntu-latest
+    if: true
     steps:
-     - name: Download sonarqube-report
-       uses: actions/download-artifact@v4
-       with:
-        name: sonarqube-report
-        path: ${{github.workspace}}
-     - name: Download zap-report
-       uses: actions/download-artifact@v4
-       with:
-        name: zap-report
-        path: ${{github.workspace}}
-     - name: Download image-report
-       uses: actions/download-artifact@v4
-       with:
-        name: image-report
-        path: ${{github.workspace}}
-     - name: Read reports
-       run: |
-        IMAGE_RESULT_HIGH=$(cat results.json | jq '.matches[] | select(.vulnerability.severity=="High") | .vulnerability.id' | wc -l)
-        if [ $IMAGE_RESULT_HIGH -gt 0 ]; then
-          echo "Image scan has high severity vulnerabilities"
-          exit 1
-        else
-          echo "Image scan passed"
-        fi
-            
-        SONAR_RESULT=$(cat sonarqube-report.json | jq -r '.projectStatus.status')
-        if [ $SONAR_RESULT != "OK" ]; then
-          echo "Sonar scan has issues"
-          exit 1
-        else
-          echo "Sonar scan passed"
-        fi
-            
-        ZAP_RESULT_HIGH=$(cat report_json.json | jq -r '.site[].alerts[] | select(.riskdesc | startswith("High")) | .name' | wc -l)
-        if [ $ZAP_RESULT_HIGH -gt 0 ]; then
-          echo "Zap scan has high severity vulnerabilities"
-          exit 1
-        else
-          echo "Zap scan passed"
-        fi
-            
-        echo "All security gates passed"
+      - name: Download sonarqube-report
+        uses: actions/download-artifact@v4
+        with:
+          name: sonarqube-report
+          path: sonarqube-report
+
+      - name: Download zap-report
+        uses: actions/download-artifact@v4
+        with:
+          name: zap-report
+          path: zap-report
+
+      - name: Download image-report
+        uses: actions/download-artifact@v4
+        with:
+          name: image-report
+          path: image-report
+
+      - name: Read reports
+        run: |
+          IMAGE_RESULT_HIGH=$(cat image-report/results.json | jq '.matches[] | select(.vulnerability.severity=="High") | .vulnerability.id' | wc -l)
+          if [ $IMAGE_RESULT_HIGH -gt 0 ]; then
+            echo "❌ Image scan has high severity vulnerabilities"
+            exit 1
+          else
+            echo "✅ Image scan passed"
+          fi
+
+          SONAR_RESULT=$(cat sonarqube-report/sonarqube-report.json | jq -r '.projectStatus.status')
+          if [ "$SONAR_RESULT" != "OK" ]; then
+            echo "❌ Sonar scan failed quality gate"
+            exit 1
+          else
+            echo "✅ Sonar scan passed"
+          fi
+
+          ZAP_RESULT_HIGH=$(cat zap-report/report_json.json | jq -r '.site[].alerts[] | select(.riskdesc | startswith("High")) | .name' | wc -l)
+          if [ $ZAP_RESULT_HIGH -gt 0 ]; then
+            echo "❌ ZAP scan found high severity vulnerabilities"
+            exit 1
+          else
+            echo "✅ ZAP scan passed"
+          fi
+
+          echo "🎉 All security gates passed"
