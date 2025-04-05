@@ -1,0 +1,248 @@
+name: Python test and build
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Pytest
+        run: |
+          pip install pytest pytest-cov
+          pytest api_tests.py --junitxml=junit/test-results.xml
+
+      - name: Archive test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: junit/test-results.xml
+
+  sonarqube:
+    name: SonarQube analysis
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: SonarQube Scan
+        uses: sonarsource/sonarqube-scan-action@master
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_URL }}
+
+      - name: Download SonarQube report
+        run: |
+          URL="${{ secrets.SONAR_URL }}/api/qualitygates/project_status?p=1&projectKey=devsecops-app&branch=main"
+          echo "Report URL $URL"
+          curl -u ${{ secrets.SONAR_TOKEN }}: "$URL" -o sonarqube-report.json
+
+      - name: Upload SonarQube report
+        id: artifact-sonarqube
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonarqube-report
+          path: sonarqube-report.json
+
+  dast:
+    name: DAST build, deploy and scan
+    needs: [test, sonarqube]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push DAST image
+        uses: docker/build-push-action@v5
+        with:
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/devops-labs:dast-test
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Wait for Azure Container App provisioning to complete
+        run: |
+          echo "Waiting for container app 'devops-test-app' to be ready..."
+          for i in {1..10}; do
+            status=$(az containerapp show -n devops-test-app -g devsecops-lab --query "properties.provisioningState" -o tsv)
+            echo "Current provisioning status: $status"
+            if [[ "$status" == "Succeeded" ]]; then
+              echo "App is ready!"
+              break
+            fi
+            echo "Waiting... ($i/10)"
+            sleep 15
+          done
+
+      - name: Deploy DAST Container App
+        uses: azure/container-apps-deploy-action@v1
+        with:
+          imageToDeploy: ${{ secrets.DOCKERHUB_USERNAME }}/devops-labs:dast-test
+          containerAppName: devops-test-app
+          containerAppEnvironment: devops-app-env
+          resourceGroup: devsecops-lab
+          location: australiaeast
+          targetPort: 5000
+
+      - name: Get deployed DAST app URL
+        run: |
+          FQDN=$(az containerapp show -n devops-test-app -g devsecops-lab --query properties.configuration.ingress.fqdn -o tsv)
+          echo "TEST_APP_URL=https://$FQDN" >> $GITHUB_ENV
+          echo "TEST_APP_URL=https://$FQDN"
+          curl https://$FQDN/ui
+          sed -i "s,http://localhost:5000,https://$FQDN,g" $GITHUB_WORKSPACE/openapi_specs/openapi3.yml
+
+      - name: Commit and push updated OpenAPI spec
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "github-actions@github.com"
+          git pull origin ${{ github.ref_name }}
+          git add openapi_specs/openapi3.yml
+          git commit -m "Update OpenAPI spec with deployed URL [skip ci]" || echo "No changes to commit"
+          git push origin HEAD:${{ github.ref_name }}
+
+      - name: Wait for app to be reachable
+        run: |
+          echo "Waiting for app to respond at $TEST_APP_URL..."
+          for i in {1..10}; do
+            curl --silent --head --fail https://${{ env.TEST_APP_URL }}/ui && break
+            echo "Retry $i: app not yet reachable."
+            sleep 10
+          done
+
+      - name: ZAP Scan
+        uses: zaproxy/action-api-scan@v0.9.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          docker_name: 'ghcr.io/zaproxy/zaproxy:stable'
+          format: openapi
+          target: /zap/wrk/openapi_specs/openapi3.yml
+          rules_file_name: .zap/rules.tsv
+          cmd_options: '-a -c /zap/wrk/.zap/rules.tsv'
+          fail_action: false
+          allow_issue_writing: false
+          artifact_name: 'zap-report'
+
+  image-scan:
+    name: Scan Docker Image for Vulnerabilities
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scan image
+        uses: anchore/scan-action@v3
+        id: image-scan
+        with:
+          image: ${{ secrets.DOCKERHUB_USERNAME }}/devops-labs:latest
+          fail-build: false
+          output-format: json
+
+      - name: Enforce Security Gateway - Fail on High/Critical CVEs
+        run: |
+          jq '.matches[] | select(.vulnerability.severity == "High" or .vulnerability.severity == "Critical")' ${{ steps.image-scan.outputs.json }} > results.json
+          COUNT=$(cat results.json | wc -l)
+          if [ "$COUNT" -gt 0 ]; then
+            echo "❌ Found $COUNT High/Critical vulnerabilities:"
+            cat results.json
+            exit 1
+          else
+            echo "✅ No High or Critical vulnerabilities found."
+          fi
+
+      - name: Upload Filtered Vulnerabilities
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: high-critical-vulns
+          path: results.json
+
+      - name: Upload Image report
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-report
+          path: ${{ steps.image-scan.outputs.json }}
+
+  submit_results:
+    name: Submit Reports to Verification Portal
+    needs: [test, sonarqube, dast, image-scan]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Azure CLI script
+        id: token-gen
+        uses: azure/CLI@v1
+        with:
+          azcliversion: latest
+          inlineScript: |
+            ACCESS_TOKEN=$(az account get-access-token | jq -r .accessToken)
+            echo "azureAccessToken=$ACCESS_TOKEN" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: sonarqube-report
+          path: ${{ github.workspace }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: zap-report
+          path: ${{ github.workspace }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: image-report
+          path: ${{ github.workspace }}
+
+      - name: Upload reports
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          AZURE_ACCESS_TOKEN: ${{ steps.token-gen.outputs.azureAccessToken }}
+        run: |
+          WEEK1_CONTAINER=$(curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" -d "$DOCKERHUB_USERNAME/devops-labs" https://devsecops-ver.azurewebsites.net/api/week1-container)
+          echo "Week1 container upload: $WEEK1_CONTAINER"
+
+          SONAR_RESPONSE=$(curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN"  --data-binary @$GITHUB_WORKSPACE/sonarqube-report.json https://devsecops-ver.azurewebsites.net/api/week3-sonar-report)
+          echo "Sonar upload: $SONAR_RESPONSE"
+
+          ZAP_RESPONSE=$(curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN"  --data-binary @$GITHUB_WORKSPACE/report_json.json https://devsecops-ver.azurewebsites.net/api/week3-zap-report)
+          echo "Zap upload: $ZAP_RESPONSE"
+
+          IMAGE_RESPONSE=$(curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" --data-binary @$GITHUB_WORKSPACE/results.json https://devsecops-ver.azurewebsites.net/api/week4-image-report)
+          echo "Image report upload: $IMAGE_RESPONSE"
