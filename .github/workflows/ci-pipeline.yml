@@ -8,6 +8,12 @@ on:
     branches:
       - main
 
+env:
+  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+  AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+  SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+  SONAR_HOST_URL: ${{ secrets.SONAR_URL }}
+
 jobs:
   test:
     name: Run tests
@@ -50,17 +56,16 @@ jobs:
       - name: SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@master
         env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_URL }}
+          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}
 
       - name: Download SonarQube report
         run: |
-          URL="${{ secrets.SONAR_URL }}/api/qualitygates/project_status?p=1&projectKey=devsecops-app&branch=main"
+          URL="${{ env.SONAR_HOST_URL }}/api/qualitygates/project_status?p=1&projectKey=devsecops-app&branch=main"
           echo "Report URL $URL"
-          curl -u ${{ secrets.SONAR_TOKEN }}: "$URL" -o sonarqube-report.json
+          curl -u ${{ env.SONAR_TOKEN }}: "$URL" -o sonarqube-report.json
 
       - name: Upload SonarQube report
-        id: artifact-sonarqube
         uses: actions/upload-artifact@v4
         with:
           name: sonarqube-report
@@ -82,19 +87,19 @@ jobs:
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          username: ${{ env.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push DAST image
         uses: docker/build-push-action@v5
         with:
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/devops-labs:dast-test
+          tags: ${{ env.DOCKERHUB_USERNAME }}/devops-labs:dast-test
 
       - name: Azure Login
         uses: azure/login@v1
         with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
+          creds: ${{ env.AZURE_CREDENTIALS }}
 
       - name: Wait for Azure Container App provisioning to complete
         run: |
@@ -113,7 +118,7 @@ jobs:
       - name: Deploy DAST Container App
         uses: azure/container-apps-deploy-action@v1
         with:
-          imageToDeploy: ${{ secrets.DOCKERHUB_USERNAME }}/devops-labs:dast-test
+          imageToDeploy: ${{ env.DOCKERHUB_USERNAME }}/devops-labs:dast-test
           containerAppName: devops-test-app
           containerAppEnvironment: devops-app-env
           resourceGroup: devsecops-lab
@@ -141,7 +146,7 @@ jobs:
         run: |
           echo "Waiting for app to respond at $TEST_APP_URL..."
           for i in {1..10}; do
-            curl --silent --head --fail https://${{ env.TEST_APP_URL }}/ui && break
+            curl --silent --head --fail $TEST_APP_URL/ui && break
             echo "Retry $i: app not yet reachable."
             sleep 10
           done
@@ -168,13 +173,11 @@ jobs:
         uses: anchore/scan-action@v4
         id: image-scan
         with:
-          image: ${{ secrets.DOCKERHUB_USERNAME }}/devops-labs:latest
+          image: ${{ env.DOCKERHUB_USERNAME }}/devops-labs:latest
           fail-build: false
           output-format: json
-   
-      
+
       - name: Upload Image report
-        id: upload-image-report
         uses: actions/upload-artifact@v4
         with:
           name: image-report
@@ -186,34 +189,41 @@ jobs:
     if: true
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/downlaod-artifact@v4
+      - name: Download SonarQube report
+        uses: actions/download-artifact@v4
         with:
           name: sonarqube-report
           path: ${{ github.workspace }}
 
-      - uses: actions/download-artifact@v4
+      - name: Download ZAP report
+        uses: actions/download-artifact@v4
         with:
           name: zap-report
           path: ${{ github.workspace }}
 
-      - uses: actions/download-artifact@v4
+      - name: Download Image scan report
+        uses: actions/download-artifact@v4
         with:
           name: image-report
           path: ${{ github.workspace }}
 
+      - name: Generate Azure access token
+        id: token-gen
+        run: |
+          echo "::set-output name=azureAccessToken::${{ secrets.AZURE_ACCESS_TOKEN }}"
+
       - name: Upload reports
         env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           AZURE_ACCESS_TOKEN: ${{ steps.token-gen.outputs.azureAccessToken }}
         run: |
           WEEK1_CONTAINER=$(curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" -d "$DOCKERHUB_USERNAME/devops-labs" https://devsecops-ver.azurewebsites.net/api/week1-container)
           echo "Week1 container upload: $WEEK1_CONTAINER"
 
-          SONAR_RESPONSE=$(curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN"  --data-binary @$GITHUB_WORKSPACE/sonarqube-report.json https://devsecops-ver.azurewebsites.net/api/week3-sonar-report)
+          SONAR_RESPONSE=$(curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN"  --data-binary @sonarqube-report.json https://devsecops-ver.azurewebsites.net/api/week3-sonar-report)
           echo "Sonar upload: $SONAR_RESPONSE"
 
-          ZAP_RESPONSE=$(curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN"  --data-binary @$GITHUB_WORKSPACE/report_json.json https://devsecops-ver.azurewebsites.net/api/week3-zap-report)
-          echo "Zap upload: $ZAP_RESPONSE"
+          ZAP_RESPONSE=$(curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN"  --data-binary @zap-report.json https://devsecops-ver.azurewebsites.net/api/week3-zap-report)
+          echo "ZAP upload: $ZAP_RESPONSE"
 
-          IMAGE_RESPONSE=$(curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" --data-binary @$GITHUB_WORKSPACE/results.json https://devsecops-ver.azurewebsites.net/api/week4-image-report)
+          IMAGE_RESPONSE=$(curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" --data-binary @image-report.json https://devsecops-ver.azurewebsites.net/api/week4-image-report)
           echo "Image report upload: $IMAGE_RESPONSE"
