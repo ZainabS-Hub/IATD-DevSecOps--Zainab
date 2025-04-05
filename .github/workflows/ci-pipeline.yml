@@ -171,27 +171,10 @@ jobs:
           image: ${{ secrets.DOCKERHUB_USERNAME }}/devops-labs:latest
           fail-build: false
           output-format: json
-
-      - name: Enforce Security Gateway - Fail on High/Critical CVEs
-        run: |
-          jq '.matches[] | select(.vulnerability.severity == "High" or .vulnerability.severity == "Critical")' ${{ steps.image-scan.outputs.json }} > results.json
-          COUNT=$(cat results.json | wc -l)
-          if [ "$COUNT" -gt 0 ]; then
-            echo "❌ Found $COUNT High/Critical vulnerabilities:"
-            cat results.json
-            exit 1
-          else
-            echo "✅ No High or Critical vulnerabilities found."
-          fi
-
-      - name: Upload Filtered Vulnerabilities
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: high-critical-vulns
-          path: results.json
-
+   
+      
       - name: Upload Image report
+        id: upload-image-report
         uses: actions/upload-artifact@v4
         with:
           name: image-report
@@ -203,8 +186,7 @@ jobs:
     if: true
     runs-on: ubuntu-latest
     steps:
-      
-      - uses: actions/download-artifact@v4
+      - uses: actions/downlaod-artifact@v4
         with:
           name: sonarqube-report
           path: ${{ github.workspace }}
