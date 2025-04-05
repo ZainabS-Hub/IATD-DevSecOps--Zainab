@@ -171,8 +171,7 @@ jobs:
           image: ${{ secrets.DOCKERHUB_USERNAME }}/devops-labs:latest
           fail-build: false
           output-format: json
-
-     
+   
       
       - name: Upload Image report
         id: upload-image-report
@@ -218,3 +217,62 @@ jobs:
 
           IMAGE_RESPONSE=$(curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" --data-binary @$GITHUB_WORKSPACE/results.json https://devsecops-ver.azurewebsites.net/api/week4-image-report)
           echo "Image report upload: $IMAGE_RESPONSE"
+   security_gate:
+     needs: [sonarqube, dast, image-scan]
+     if: true
+     runs-on: ubuntu-latest
+     steps:
+     - name: Download sonarqube-report
+       uses: actions/download-artifact@v4
+       with:
+        name: sonarqube-report
+        path: ${{ github.workspace }}
+
+     - name: Download zap-report
+      uses: actions/download-artifact@v4
+      with:
+        name: zap-report
+        path: ${{ github.workspace }}
+
+     - name: Download image-report
+      uses: actions/download-artifact@v4
+      with:
+        name: image-report
+        path: ${{ github.workspace }}
+
+     - name: Download filtered critical vulns
+      uses: actions/download-artifact@v4
+      with:
+        name: high-critical-vulns
+        path: ${{ github.workspace }}
+
+     - name: Read reports and enforce gates
+      run: |
+        echo "🔍 Checking image scan for high vulnerabilities..."
+        IMAGE_RESULT_HIGH=$(cat results.json | jq '.matches[] | select(.vulnerability.severity=="High") | .vulnerability.id' | wc -l)
+        if [ "$IMAGE_RESULT_HIGH" -gt 0 ]; then
+          echo "❌ Image scan has $IMAGE_RESULT_HIGH high severity vulnerabilities"
+          exit 1
+        else
+          echo "✅ Image scan passed"
+        fi
+
+        echo "🔍 Checking SonarQube status..."
+        SONAR_RESULT=$(cat sonarqube-report.json | jq -r '.projectStatus.status')
+        if [ "$SONAR_RESULT" != "OK" ]; then
+          echo "❌ SonarQube reported issues: $SONAR_RESULT"
+          exit 1
+        else
+          echo "✅ SonarQube scan passed"
+        fi
+
+        echo "🔍 Checking ZAP scan for high risk alerts..."
+        ZAP_RESULT_HIGH=$(cat report_json.json | jq -r '.site[].alerts[] | select(.riskdesc | startswith("High")) | .name' | wc -l)
+        if [ "$ZAP_RESULT_HIGH" -gt 0 ]; then
+          echo "❌ ZAP scan found $ZAP_RESULT_HIGH high severity alerts"
+          exit 1
+        else
+          echo "✅ ZAP scan passed"
+        fi
+
+        echo "🎉 All security gates passed successfully!"
