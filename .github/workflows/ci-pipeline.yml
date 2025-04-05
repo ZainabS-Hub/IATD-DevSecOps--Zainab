@@ -54,7 +54,7 @@ jobs:
           SONAR_HOST_URL: ${{ secrets.SONAR_URL }}
 
       - name: Generate SonarQube report (dummy for now)
-        run: echo '{"status": "ok"}' > sonarqube-report.json
+        run: echo "{\"status\": \"ok\"}" > sonarqube-report.json
 
       - name: Upload SonarQube report
         uses: actions/upload-artifact@v4
