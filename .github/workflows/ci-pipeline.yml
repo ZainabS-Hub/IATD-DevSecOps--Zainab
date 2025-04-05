@@ -122,7 +122,18 @@ jobs:
           resourceGroup: devsecops-lab
           location: australiaeast
           targetPort: 5000
+        continue-on-error: true
 
+      - name: Retry deploy if failed
+        if: failure()
+        run: |
+         echo "Retrying deploy after short wait..."
+         sleep 20
+         az containerapp update \
+         --name devops-test-app \
+         --resource-group devsecops-lab \
+         --image ${{ env.DOCKERHUB_USERNAME }}/devops-labs:dast-test \
+         --target-port 5000
       - name: Get deployed DAST app URL
         run: |
           FQDN=$(az containerapp show -n devops-test-app -g devsecops-lab --query properties.configuration.ingress.fqdn -o tsv)
