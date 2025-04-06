@@ -165,16 +165,12 @@ jobs:
           #artifact_name: 'zap-report'
     
       - name: Upload ZAP report
+        id: artifact-zap
         uses: actions/upload-artifact@v4
         with:
           name: zap-report
           path: report_json.json
-      - name: ZAP Scan
-        uses: zaproxy/action-api-scan@v0.9.0
-        with:
-          name: zap-report
-          path: report_json.json
-        
+      
 
   build:
     name: Build and Sign Docker Image
