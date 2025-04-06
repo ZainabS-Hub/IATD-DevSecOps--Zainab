@@ -16,11 +16,11 @@ jobs:
         env:
           IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/devops-labs:latest
           GITHUB_ISSUER: https://token.actions.githubusercontent.com
-          CERT_IDENTITY_REGEXP: https://github.com/.*/<YOUR_GITHUB_REPOSITORY_NAME>/.github/workflows/ci-pipeline.yml.*
+          CERT_IDENTITY: https://github.com/ZainabS-Hub/IATD-DevSecOps--Zainab/.github/workflows/ci-pipeline.yml@refs/heads/main
         run: |
-          echo "🔍 Verifying signature of $IMAGE"
+          echo "🔐 Verifying signature of $IMAGE"
           cosign verify $IMAGE \
-            --certificate-identity-regexp "$CERT_IDENTITY_REGEXP" \
+            --certificate-identity "$CERT_IDENTITY" \
             --certificate-oidc-issuer "$GITHUB_ISSUER"
 
   deploy:
@@ -82,7 +82,7 @@ jobs:
           FQDN=$(az containerapp show -n devops-app -g devsecops-lab --query properties.configuration.ingress.fqdn -o tsv)
           echo "🌐 FQDN: https://$FQDN"
 
-          # Week 1 and 2 URL submission
+          # Week 1 and 2 submissions
           curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" -d "https://$FQDN" https://devsecops-ver.azurewebsites.net/api/week1-app
           curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" -d "https://$FQDN" https://devsecops-ver.azurewebsites.net/api/week2-submit
 
