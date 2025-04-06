@@ -90,7 +90,7 @@ jobs:
 
           # Week 3 - ZAP Report
           curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" \
-            --data-binary @artifacts/zap-report/report_json.json \
+            --data-binary @artifacts/report_json.json \
             https://devsecops-ver.azurewebsites.net/api/week3-zap-report
 
           # Week 4 - Image Scan Report
