@@ -73,8 +73,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: sbom
-          path: /home/runner/.cache/buildkit/sbom/pretty/*.json
-
+          path: ./sbom
       - name: Upload reports and app URL
         env:
           AZURE_ACCESS_TOKEN: ${{ steps.token-gen.outputs.azureAccessToken }}
