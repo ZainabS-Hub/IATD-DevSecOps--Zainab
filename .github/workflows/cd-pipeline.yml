@@ -1,12 +1,36 @@
 name: Deploy
 
-on: workflow_dispatch
+on:
+  workflow_dispatch
 
 jobs:
-  deploy:
+  verify-signature:
+    name: Manual Deploy with Signature Verification
     runs-on: ubuntu-latest
+
     steps:
-      - uses: azure/login@v1
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.4.0
+
+      - name: Verify image signature
+        env:
+          IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/devops-labs:latest
+          GITHUB_ISSUER: https://token.actions.githubusercontent.com
+          CERT_IDENTITY: https://github.com/ZainabS-Hub/IATD-DevSecOps--Zainab/.github/workflows/ci-pipeline.yml@refs/heads/main
+        run: |
+          echo "🔐 Verifying signature of $IMAGE"
+          cosign verify $IMAGE \
+            --certificate-identity "$CERT_IDENTITY" \
+            --certificate-oidc-issuer "$GITHUB_ISSUER"
+
+  deploy:
+    name: Deploy Container App to Azure
+    needs: verify-signature
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Azure Login
+        uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
@@ -21,33 +45,57 @@ jobs:
           targetPort: 5000
 
   submit_results:
-            needs: [deploy]
-            if: true
-            runs-on: ubuntu-latest
-            steps:
-              - uses: azure/login@v1
-                with:
-                  creds: ${{ secrets.AZURE_CREDENTIALS }}
-        
-              - name: Azure CLI script
-                id: token-gen
-                uses: azure/CLI@v1
-                with:
-                  azcliversion: 2.63.0
-                  inlineScript: |
-                    ACCESS_TOKEN=$(az account get-access-token | jq -r .accessToken)
-                    echo "azureAccessToken=$ACCESS_TOKEN" >> "$GITHUB_OUTPUT"
-        
-              - name: Upload reports
-                env:
-                  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-                  AZURE_ACCESS_TOKEN: ${{ steps.token-gen.outputs.azureAccessToken }}
-                run: |
-                  export FQDN=$(az containerapp show -n devops-app -g devsecops-lab --query properties.configuration.ingress.fqdn -o tsv)
-                  echo "FQDN: $FQDN"
-                  WEEK1_APP=$(curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" -d "https://$FQDN" https://devsecops-ver.azurewebsites.net/api/week1-app)
-                  echo "Week1 app upload: $WEEK1_APP"
-                  #Week 2 verification
-                  WEEK2_SUBMIT=$(curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" -d "https://$FQDN" https://devsecops-ver.azurewebsites.net/api/week2-submit)
-                  echo "Week2 submit: $WEEK2_SUBMIT"
-        
+    name: Submit Verification URLs and Reports
+    needs: deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Azure CLI script
+        id: token-gen
+        uses: azure/CLI@v1
+        with:
+          azcliversion: 2.63.0
+          inlineScript: |
+            ACCESS_TOKEN=$(az account get-access-token | jq -r .accessToken)
+            echo "azureAccessToken=$ACCESS_TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Download SBOM
+        uses: actions/download-artifact@v4
+        with:
+          name: sbom
+          path: ./sbom
+      - name: Upload reports and app URL
+        env:
+          AZURE_ACCESS_TOKEN: ${{ steps.token-gen.outputs.azureAccessToken }}
+        run: |
+          FQDN=$(az containerapp show -n devops-app -g devsecops-lab --query properties.configuration.ingress.fqdn -o tsv)
+          echo "🌐 FQDN: https://$FQDN"
+
+          # Week 1 and 2 submissions
+          curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" -d "https://$FQDN" https://devsecops-ver.azurewebsites.net/api/week1-app
+          curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" -d "https://$FQDN" https://devsecops-ver.azurewebsites.net/api/week2-submit
+
+          # Week 3 ZAP Report
+          curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" \
+            --data-binary @artifacts/zap-report/report_json.json \
+            https://devsecops-ver.azurewebsites.net/api/week3-zap-report
+
+          # Week 4 Image Scan Report
+          curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" \
+            --data-binary @artifacts/image-report/results.json \
+            https://devsecops-ver.azurewebsites.net/api/week4-image-report
+
+          # Week 5 SBOM
+          curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" \
+            --data-binary @sbom/sbom_pretty.json \
+            https://devsecops-ver.azurewebsites.net/api/week5-sbom
