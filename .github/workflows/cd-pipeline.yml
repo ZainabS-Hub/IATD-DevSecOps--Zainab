@@ -4,7 +4,7 @@ on:
   workflow_dispatch
 
 jobs:
-  verify-signature:
+  verify-image-signature:
     name: Manual Deploy with Signature Verification
     runs-on: ubuntu-latest
 
@@ -18,11 +18,9 @@ jobs:
           GITHUB_ISSUER: https://token.actions.githubusercontent.com
           CERT_IDENTITY: https://github.com/ZainabS-Hub/IATD-DevSecOps--Zainab/.github/workflows/ci-pipeline.yml@refs/heads/main
         run: |
-          echo "🔐 Verifying signature of $IMAGE"
-          cosign verify $IMAGE \
-            --certificate-identity "$CERT_IDENTITY" \
-            --certificate-oidc-issuer "$GITHUB_ISSUER"
+          cosign verify $IMAGE --certificate-identity-regexp $CERT_IDENTITY --certificate-oidc-issuer $GITHUB_ISSUER
 
+          
   deploy:
     name: Deploy Container App to Azure
     needs: verify-signature
