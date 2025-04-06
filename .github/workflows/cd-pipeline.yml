@@ -68,7 +68,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: zap-report
-          path: artifacts/zap-report
+          path: report_json.json
 
       - name: Download Image Scan Report
         uses: actions/download-artifact@v4
