@@ -23,7 +23,7 @@ jobs:
           
   deploy:
     name: Deploy Container App to Azure
-    needs: verify-signature
+    needs: verify-image-signature # FIXED
     runs-on: ubuntu-latest
 
     steps:
