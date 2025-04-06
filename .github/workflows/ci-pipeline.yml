@@ -2,11 +2,9 @@ name: Python test and build
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    branches:
-      - main
+    branches: [main]
 
 env:
   DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -102,14 +100,10 @@ jobs:
 
       - name: Wait for Azure Container App provisioning to complete
         run: |
-          echo "Waiting for container app 'devops-test-app' to be ready..."
           for i in {1..10}; do
             status=$(az containerapp show -n devops-test-app -g devsecops-lab --query "properties.provisioningState" -o tsv)
-            echo "Current provisioning status: $status"
-            if [[ "$status" == "Succeeded" ]]; then
-              echo "App is ready!"
-              break
-            fi
+            echo "Status: $status"
+            if [[ "$status" == "Succeeded" ]]; then break; fi
             sleep 15
           done
 
@@ -127,7 +121,6 @@ jobs:
       - name: Retry deploy if failed
         if: failure()
         run: |
-          echo "Retrying deploy after short wait..."
           sleep 20
           az containerapp update \
             --name devops-test-app \
@@ -154,7 +147,7 @@ jobs:
         run: |
           for i in {1..10}; do
             curl --silent --head --fail $TEST_APP_URL/ui && break
-            echo "Retry $i: app not yet reachable."
+            echo "Waiting..."
             sleep 10
           done
 
@@ -170,58 +163,59 @@ jobs:
           fail_action: false
           allow_issue_writing: false
           artifact_name: 'zap-report'
+
   build:
-   name: Build and push Docker image
-   needs: test
-   # needs: [security_gate]
-   if: true
-   permissions:
-    id-token: write
-   runs-on: ubuntu-latest
-   steps:
-     - uses: actions/checkout@v4
-        
-     - name: Set up QEMU
-       uses: docker/setup-qemu-action@v3
-        
-     - name: Set up Docker Buildx
-       uses: docker/setup-buildx-action@v3
-        
-     - name: Login to Docker Hub
-       uses: docker/login-action@v3
-       with:
-        username: ${{ secrets.DOCKERHUB_USERNAME }}
-        password: ${{ secrets.DOCKERHUB_TOKEN }}
-        
-     - name: Build and push 
-       uses: docker/build-push-action@v5
-       with:
+    name: Build and Sign Docker Image
+    needs: test
+    permissions:
+      id-token: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push image with SBOM & provenance
+        uses: docker/build-push-action@v5
+        with:
           push: true
           sbom: true
           provenance: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/devops-labs:latest
-     - name: Install Cosign
-       uses: sigstore/cosign-installer@v3.4.0
-  
-     - name: Sign the images with GitHub OIDC Token
-       env:
-        IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/devops-labs:latest
-       run: |
-        cosign sign --yes ${IMAGE}     
-     - name: Install jq (for parsing SBOM)
-       run: sudo apt-get install -y jq
-  
-     - name: Extract SBOM
-       run: |
-        docker buildx imagetools inspect ${{ secrets.DOCKERHUB_USERNAME }}/devops-labs:latest \
-          --format "{{json .SBOM.SPDX}}" > sbom.json
-        cat sbom.json | jq . > sbom_pretty.json
-  
-     - name: Upload SBOM artifact
-       uses: actions/upload-artifact@v4
-       with:
-         name: sbom
-         path: sbom_pretty.json   
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.4.0
+
+      - name: Sign the image
+        env:
+          IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/devops-labs:latest
+        run: cosign sign --yes $IMAGE
+
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
+      - name: Extract SBOM
+        run: |
+          docker buildx imagetools inspect ${{ secrets.DOCKERHUB_USERNAME }}/devops-labs:latest \
+            --format "{{json .SBOM.SPDX}}" > sbom.json
+          cat sbom.json | jq . > sbom_pretty.json
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: /home/runner/.cache/buildkit/sbom/pretty/*.json
+
   image-scan:
     name: Scan Docker Image
     needs: [build]
@@ -268,17 +262,26 @@ jobs:
       - name: Download SBOM
         uses: actions/download-artifact@v4
         with:
-            name: sbom
-            path: /home/runner/.cache/buildkit/sbom/pretty/*.json   
+          name: sbom
+          path: sbom
 
       - name: Upload reports
         env:
           AZURE_ACCESS_TOKEN: ${{ steps.token-gen.outputs.azureAccessToken }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/devops-labs
         run: |
-          curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" -d "$DOCKERHUB_USERNAME/devops-labs" https://devsecops-ver.azurewebsites.net/api/week1-container
-          curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" --data-binary @artifacts/sonarqube-report/sonarqube-report.json https://devsecops-ver.azurewebsites.net/api/week3-sonar-report
-          curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" --data-binary @artifacts/zap-report/report_json.json https://devsecops-ver.azurewebsites.net/api/week3-zap-report
-          curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" --data-binary @artifacts/image-report/results.json https://devsecops-ver.azurewebsites.net/api/week4-image-report
-          curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" --data-binary @sbom/sbom_pretty.json https://devsecops-ver.azurewebsites.net/api/week5-sbom
-  
-  
+          WEEK1_CONTAINER=$(curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" -d "$DOCKERHUB_USERNAME/devops-labs" https://devsecops-ver.azurewebsites.net/api/week1-container)
+          echo "Week1 container upload: $WEEK1_CONTAINER"
+
+          SONAR_RESPONSE=$(curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" --data-binary @artifacts/sonarqube-report/sonarqube-report.json https://devsecops-ver.azurewebsites.net/api/week3-sonar-report)
+          echo "Sonar upload: $SONAR_RESPONSE"
+
+          ZAP_RESPONSE=$(curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" --data-binary @artifacts/zap-report/report_json.json https://devsecops-ver.azurewebsites.net/api/week3-zap-report)
+          echo "Zap upload: $ZAP_RESPONSE"
+
+          IMAGE_RESPONSE=$(curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" --data-binary @artifacts/image-report/results.json https://devsecops-ver.azurewebsites.net/api/week4-image-report)
+          echo "Image report upload: $IMAGE_RESPONSE"
+
+          WEEK5_RESPONSE=$(curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" -d "$IMAGE" https://devsecops-ver.azurewebsites.net/api/week5-report)
+          echo "Week5 report upload: $WEEK5_RESPONSE"
