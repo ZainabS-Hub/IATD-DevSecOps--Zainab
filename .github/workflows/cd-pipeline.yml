@@ -77,6 +77,11 @@ jobs:
           name: sbom
           path: ./sbom
 
+      - name: Debug artifact structure
+        run: |
+          echo "📁 Listing contents of artifacts:"
+          ls -R artifacts
+
       - name: Upload reports and app URL
         env:
           AZURE_ACCESS_TOKEN: ${{ steps.token-gen.outputs.azureAccessToken }}
@@ -89,17 +94,33 @@ jobs:
           curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" -d "https://$FQDN" https://devsecops-ver.azurewebsites.net/api/week2-submit
 
           # Week 3 - ZAP Report
-          curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" \
-            --data-binary @artifacts/report_json.json \
-            https://devsecops-ver.azurewebsites.net/api/week3-zap-report
+          if [ -f "artifacts/report_json.json" ]; then
+            echo "📤 Uploading ZAP report (Week 3)..."
+            curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" \
+              --data-binary @artifacts/report_json.json \
+              https://devsecops-ver.azurewebsites.net/api/week3-zap-report
+          elif [ -f "artifacts/zap-report/report_json.json" ]; then
+            echo "📤 Uploading ZAP report (Week 3 - nested)..."
+            curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" \
+              --data-binary @artifacts/zap-report/report_json.json \
+              https://devsecops-ver.azurewebsites.net/api/week3-zap-report
+          else
+            echo "⚠️ ZAP report not found. Skipping Week 3 upload."
+          fi
 
           # Week 4 - Image Scan Report
-          curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" \
-            --data-binary @artifacts/image-report/results.json \
-            https://devsecops-ver.azurewebsites.net/api/week4-image-report
+          if [ -f "artifacts/image-report/results.json" ]; then
+            echo "📤 Uploading Image Scan Report (Week 4)..."
+            curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" \
+              --data-binary @artifacts/image-report/results.json \
+              https://devsecops-ver.azurewebsites.net/api/week4-image-report
+          else
+            echo "⚠️ Image scan report not found. Skipping Week 4 upload."
+          fi
 
-          # Week 5 - SBOM (optional)
+          # Week 5 - SBOM
           if [ -f "./sbom/sbom_pretty.json" ]; then
+            echo "📤 Uploading SBOM (Week 5)..."
             curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" \
               --data-binary @sbom/sbom_pretty.json \
               https://devsecops-ver.azurewebsites.net/api/week5-sbom
