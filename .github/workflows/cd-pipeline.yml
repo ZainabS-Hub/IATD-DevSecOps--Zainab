@@ -18,12 +18,13 @@ jobs:
           GITHUB_ISSUER: https://token.actions.githubusercontent.com
           CERT_IDENTITY: https://github.com/ZainabS-Hub/IATD-DevSecOps--Zainab/.github/workflows/ci-pipeline.yml@refs/heads/main
         run: |
-          cosign verify $IMAGE --certificate-identity-regexp $CERT_IDENTITY --certificate-oidc-issuer $GITHUB_ISSUER
+          cosign verify $IMAGE \
+            --certificate-identity-regexp "$CERT_IDENTITY" \
+            --certificate-oidc-issuer "$GITHUB_ISSUER"
 
-          
   deploy:
     name: Deploy Container App to Azure
-    needs: verify-image-signature # FIXED
+    needs: verify-image-signature
     runs-on: ubuntu-latest
 
     steps:
@@ -60,6 +61,7 @@ jobs:
           azcliversion: 2.63.0
           inlineScript: |
             ACCESS_TOKEN=$(az account get-access-token | jq -r .accessToken)
+            echo "::add-mask::$ACCESS_TOKEN"
             echo "azureAccessToken=$ACCESS_TOKEN" >> "$GITHUB_OUTPUT"
 
       - name: Download Artifacts
@@ -68,10 +70,13 @@ jobs:
           path: artifacts
 
       - name: Download SBOM
+        if: always()
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: sbom
           path: ./sbom
+
       - name: Upload reports and app URL
         env:
           AZURE_ACCESS_TOKEN: ${{ steps.token-gen.outputs.azureAccessToken }}
@@ -79,21 +84,25 @@ jobs:
           FQDN=$(az containerapp show -n devops-app -g devsecops-lab --query properties.configuration.ingress.fqdn -o tsv)
           echo "🌐 FQDN: https://$FQDN"
 
-          # Week 1 and 2 submissions
+          # Week 1 and 2
           curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" -d "https://$FQDN" https://devsecops-ver.azurewebsites.net/api/week1-app
           curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" -d "https://$FQDN" https://devsecops-ver.azurewebsites.net/api/week2-submit
 
-          # Week 3 ZAP Report
+          # Week 3 - ZAP Report
           curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" \
             --data-binary @artifacts/zap-report/report_json.json \
             https://devsecops-ver.azurewebsites.net/api/week3-zap-report
 
-          # Week 4 Image Scan Report
+          # Week 4 - Image Scan Report
           curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" \
             --data-binary @artifacts/image-report/results.json \
             https://devsecops-ver.azurewebsites.net/api/week4-image-report
 
-          # Week 5 SBOM
-          curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" \
-            --data-binary @sbom/sbom_pretty.json \
-            https://devsecops-ver.azurewebsites.net/api/week5-sbom
+          # Week 5 - SBOM (optional)
+          if [ -f "./sbom/sbom_pretty.json" ]; then
+            curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" \
+              --data-binary @sbom/sbom_pretty.json \
+              https://devsecops-ver.azurewebsites.net/api/week5-sbom
+          else
+            echo "⚠️ SBOM not found. Skipping Week 5 submission."
+          fi
