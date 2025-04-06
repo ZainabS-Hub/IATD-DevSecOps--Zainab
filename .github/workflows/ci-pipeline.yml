@@ -196,7 +196,20 @@ jobs:
           sbom: true
           provenance: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/devops-labs:latest
-        
+     - name: Install jq (for parsing SBOM)
+       run: sudo apt-get install -y jq
+  
+     - name: Extract SBOM
+       run: |
+        docker buildx imagetools inspect ${{ secrets.DOCKERHUB_USERNAME }}/devops-labs:latest \
+          --format "{{json .SBOM.SPDX}}" > sbom.json
+        cat sbom.json | jq . > sbom_pretty.json
+  
+     - name: Upload SBOM artifact
+       uses: actions/upload-artifact@v4
+       with:
+         name: sbom
+         path: sbom_pretty.json   
   image-scan:
     name: Scan Docker Image
     needs: [build]
@@ -240,6 +253,12 @@ jobs:
         with:
           path: artifacts
 
+      - name: Download SBOM
+        uses: actions/download-artifact@v4
+        with:
+            name: sbom
+            path: sbom    
+
       - name: Upload reports
         env:
           AZURE_ACCESS_TOKEN: ${{ steps.token-gen.outputs.azureAccessToken }}
@@ -248,9 +267,9 @@ jobs:
           curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" --data-binary @artifacts/sonarqube-report/sonarqube-report.json https://devsecops-ver.azurewebsites.net/api/week3-sonar-report
           curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" --data-binary @artifacts/zap-report/report_json.json https://devsecops-ver.azurewebsites.net/api/week3-zap-report
           curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" --data-binary @artifacts/image-report/results.json https://devsecops-ver.azurewebsites.net/api/week4-image-report
-
-  #security_gate:
-   # name: Security Gate Check
+          curl -X POST -H "Authorization: Bearer $AZURE_ACCESS_TOKEN" --data-binary @sbom/sbom_pretty.json https://devsecops-ver.azurewebsites.net/api/week5-sbom
+  security_gate:
+    name: Security Gate Check
     needs: [sonarqube, dast, image-scan]
     runs-on: ubuntu-latest
     if: true
@@ -300,3 +319,11 @@ jobs:
           fi
 
           echo "🎉 All security gates passed"
+      - name: Check SBOM for known risk packages
+        run: |
+          if grep -q "log4j" sbom/sbom_pretty.json; then
+            echo "❌ SBOM contains log4j — known vulnerability risk!"
+            exit 1
+          fi
+          echo "✅ SBOM check passed"
+  
